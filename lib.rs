@@ -1,31 +1,62 @@
 use anchor_lang::prelude::*;
 
-declare_id!("3VMwg6tqwHcVxeFFcXF35ymgTMjkwxvwkuWcabjCDGnf");
+declare_id!("DtrXksPN2k3whjeWLfhNa1wTSijD78YgJEcTZdjBdG6x");
+
+const MAX_NOMBRE: usize = 30 * 4; 
+const MAX_RAZA: usize = 30 * 4;
+const MAX_FECHA: usize = 12 * 4; 
+const MAX_DIAGNOSTICO: usize = 50 * 4;
+const MAX_CONSULTAS: usize = 10; 
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct EntradaMedica {
+    pub fecha: String,
+    pub diagnostico: String,
+    pub costo: u64,
+}
+
+impl EntradaMedica {
+    pub const SIZE: usize = 4 + MAX_FECHA + 4 + MAX_DIAGNOSTICO + 8;
+}
+
+#[account]
+pub struct Mascota {
+    pub owner: Pubkey,
+    pub nombre: String,
+    pub raza: String,
+    pub historial: Vec<EntradaMedica>,
+}
+
+impl Mascota {
+    pub const SIZE: usize = 32 
+        + 4 + MAX_NOMBRE 
+        + 4 + MAX_RAZA 
+        + 4 + (MAX_CONSULTAS * EntradaMedica::SIZE);
+}
 
 #[program]
 pub mod pet_health_vault {
     use super::*;
 
-    //Aqui se crea el expediente de la mascota
     pub fn registrar_mascota(
         ctx: Context<RegistrarMascota>,
         nombre: String,
         raza: String,
     ) -> Result<()> {
         let mascota = &mut ctx.accounts.mascota_account;
+
+        require!(nombre.chars().count() <= 30, ErrorMascota::NombreMuyLargo);
+        require!(raza.chars().count() <= 30, ErrorMascota::RazaMuyLarga);
+
         mascota.owner = ctx.accounts.owner.key();
         mascota.nombre = nombre;
         mascota.raza = raza;
-        mascota.historial = Vec::new(); //Inicia sin consultas
-        msg!(
-            "Expediente creado para: {} (Propietario: {})",
-            mascota.nombre,
-            mascota.owner
-        );
+        mascota.historial = Vec::new();
+
+        msg!("Expediente creado para: {}", mascota.nombre);
         Ok(())
     }
 
-    //Se agrega una nueva consulta médica
     pub fn agregar_consulta(
         ctx: Context<GestionarExpediente>,
         fecha: String,
@@ -34,49 +65,22 @@ pub mod pet_health_vault {
     ) -> Result<()> {
         let mascota = &mut ctx.accounts.mascota_account;
 
-        //Solo el dueño que creó el expediente puede agregar datos
-        require!(
-            mascota.owner == ctx.accounts.owner.key(),
-            ErrorMascota::NoAutorizado
-        );
+        require!(mascota.owner == ctx.accounts.owner.key(), ErrorMascota::NoAutorizado);
+        require!(fecha.chars().count() <= 12, ErrorMascota::FechaMuyLarga);
+        require!(diagnostico.chars().count() <= 50, ErrorMascota::DiagnosticoMuyLargo);
+        require!(mascota.historial.len() < MAX_CONSULTAS, ErrorMascota::HistorialLleno);
 
-        let nueva_entrada = EntradaMedica {
-            fecha,
-            diagnostico,
-            costo,
-        };
-
+        let nueva_entrada = EntradaMedica { fecha, diagnostico, costo };
         mascota.historial.push(nueva_entrada);
-        msg!("Nueva consulta registrada para {}", mascota.nombre);
+
+        msg!("Consulta registrada.");
         Ok(())
     }
 
-    //Borrar expediente (para liberar espacio/SOL si es necesario)
     pub fn cerrar_expediente(_ctx: Context<GestionarExpediente>) -> Result<()> {
-        msg!("Expediente cerrado y datos liberados.");
+        msg!("Expediente cerrado.");
         Ok(())
     }
-}
-
-#[account]
-#[derive(InitSpace)] //Calcula el tamaño de la cuenta automáticamente
-pub struct Mascota {
-    pub owner: Pubkey,
-    #[max_len(30)]
-    pub nombre: String,
-    #[max_len(30)]
-    pub raza: String,
-    #[max_len(10)] //Guardamos hasta 10 consultas para no saturar la cuenta
-    pub historial: Vec<EntradaMedica>,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
-pub struct EntradaMedica {
-    #[max_len(12)] // Ejemplo: "2024-10-25"
-    pub fecha: String,
-    #[max_len(50)]
-    pub diagnostico: String,
-    pub costo: u64,
 }
 
 #[derive(Accounts)]
@@ -84,8 +88,8 @@ pub struct RegistrarMascota<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + Mascota::INIT_SPACE, // 8 bytes de discriminador + espacio de datos
-        seeds = [b"expediente", owner.key().as_ref()], // PDA única por dueño
+        space = 8 + Mascota::SIZE,
+        seeds = [b"expediente", owner.key().as_ref()], 
         bump
     )]
     pub mascota_account: Account<'info, Mascota>,
@@ -97,10 +101,10 @@ pub struct RegistrarMascota<'info> {
 #[derive(Accounts)]
 pub struct GestionarExpediente<'info> {
     #[account(
-        mut, 
-        seeds = [b"expediente", owner.key().as_ref()], 
+        mut,
+        seeds = [b"expediente", owner.key().as_ref()],
         bump,
-        close = owner //Opción para borrar la cuenta y recuperar el dinero (SOL)
+        close = owner,
     )]
     pub mascota_account: Account<'info, Mascota>,
     pub owner: Signer<'info>,
@@ -108,6 +112,16 @@ pub struct GestionarExpediente<'info> {
 
 #[error_code]
 pub enum ErrorMascota {
-    #[msg("No tienes permiso para modificar este expediente médico.")]
+    #[msg("No autorizado.")]
     NoAutorizado,
+    #[msg("Nombre muy largo.")]
+    NombreMuyLargo,
+    #[msg("Raza muy larga.")]
+    RazaMuyLarga,
+    #[msg("Fecha muy larga.")]
+    FechaMuyLarga,
+    #[msg("Diagnóstico muy largo.")]
+    DiagnosticoMuyLargo,
+    #[msg("Historial lleno.")]
+    HistorialLleno,
 }
