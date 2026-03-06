@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 declare_id!("DtrXksPN2k3whjeWLfhNa1wTSijD78YgJEcTZdjBdG6x");
 
+// Constantes de tamaño para el cálculo de espacio
 const MAX_NOMBRE: usize = 30 * 4; 
 const MAX_RAZA: usize = 30 * 4;
 const MAX_FECHA: usize = 12 * 4; 
@@ -73,12 +74,21 @@ pub mod pet_health_vault {
         let nueva_entrada = EntradaMedica { fecha, diagnostico, costo };
         mascota.historial.push(nueva_entrada);
 
-        msg!("Consulta registrada.");
+        msg!("Consulta registrada con costo: {}", costo);
+        Ok(())
+    }
+
+    // Nueva función solicitada para ver el expediente
+    pub fn ver_expediente(ctx: Context<VerExpediente>) -> Result<()> {
+        let mascota = &ctx.accounts.mascota_account;
+        msg!("Expediente de: {}", mascota.nombre);
+        msg!("Raza: {}", mascota.raza);
+        msg!("Consultas registradas: {}", mascota.historial.len());
         Ok(())
     }
 
     pub fn cerrar_expediente(_ctx: Context<GestionarExpediente>) -> Result<()> {
-        msg!("Expediente cerrado.");
+        msg!("Expediente cerrado y cuenta eliminada.");
         Ok(())
     }
 }
@@ -103,8 +113,18 @@ pub struct GestionarExpediente<'info> {
     #[account(
         mut,
         seeds = [b"expediente", owner.key().as_ref()],
-        bump,
-        close = owner,
+        bump
+    )]
+    pub mascota_account: Account<'info, Mascota>,
+    pub owner: Signer<'info>,
+}
+
+// Contexto para la nueva función de visualización
+#[derive(Accounts)]
+pub struct VerExpediente<'info> {
+    #[account(
+        seeds = [b"expediente", owner.key().as_ref()],
+        bump
     )]
     pub mascota_account: Account<'info, Mascota>,
     pub owner: Signer<'info>,
