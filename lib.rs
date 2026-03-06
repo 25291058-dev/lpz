@@ -78,7 +78,7 @@ pub mod pet_health_vault {
         Ok(())
     }
 
-    // Nueva función solicitada para ver el expediente
+   //Funcion para ver el expediente
     pub fn ver_expediente(ctx: Context<VerExpediente>) -> Result<()> {
         let mascota = &ctx.accounts.mascota_account;
         msg!("Expediente de: {}", mascota.nombre);
@@ -119,7 +119,7 @@ pub struct GestionarExpediente<'info> {
     pub owner: Signer<'info>,
 }
 
-// Contexto para la nueva función de visualización
+//Contexto para la vizuali
 #[derive(Accounts)]
 pub struct VerExpediente<'info> {
     #[account(
